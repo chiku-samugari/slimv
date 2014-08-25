@@ -1303,7 +1303,6 @@ def swank_response(name):
             actions.pop(a.id)
             actions_pending()
             return
-    vc = ":let s:swank_action=''"
     vc = ":let s:swank_result=''"
     vim.command(vc)
     actions_pending()
