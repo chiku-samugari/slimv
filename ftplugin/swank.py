@@ -18,6 +18,7 @@ import socket
 import time
 import select
 import string
+import re
 
 input_port      = 4005
 output_port     = 4006
@@ -1284,9 +1285,11 @@ def swank_output(echo):
         result = swank_listen()
         pending = actions_pending()
         count = count + 1
-    if echo and result != '':
+    if echo == 1 and result != '':
         # Append SWANK output to REPL buffer
         append_repl(result, 0)
+    elif echo == 2 and result != '':
+        vim.command('call FlipFlopShowText("' + re.sub(r'([\'"])', '\\\\\\1', result) + '")')
     if debug_activated and debug_active:
         # Debugger was activated in this run
         vim.command('call SlimvOpenSldbBuffer()')

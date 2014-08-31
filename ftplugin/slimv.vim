@@ -443,10 +443,10 @@ function! SlimvRestoreFocus( hide_current_buf )
 endfunction
 
 " Handle response coming from the SWANK listener
-function! SlimvSwankResponse()
+function! SlimvSwankResponse(echomode)
     let s:swank_ok_result = ''
     let s:refresh_disabled = 1
-    silent execute 'python swank_output(1)'
+    silent execute 'python swank_output(' . a:echomode . ')'
     let s:refresh_disabled = 0
     let s:swank_action = ''
     let s:swank_result = ''
@@ -520,7 +520,7 @@ function! SlimvRefreshReplBuffer()
     endif
 
     if s:swank_connected
-        call SlimvSwankResponse()
+        call SlimvSwankResponse(1)
     endif
 
     if exists("s:input_prompt") && s:input_prompt != ''
@@ -528,6 +528,28 @@ function! SlimvRefreshReplBuffer()
         unlet s:input_prompt
         echo ""
         call SlimvCommand( 'python swank_return("' . answer . '")' )
+    endif
+endfunction
+
+function! SlimvRefreshReplBufferEx(echomode)
+    if a:echomode <= 1
+        call SlimvRefreshReplBuffer()
+    else
+        if s:refresh_disabled
+            " Refresh is unwanted at the moment, probably another refresh is going on
+            return
+        endif
+
+        if s:swank_connected
+            call SlimvSwankResponse(2)
+        endif
+
+        if exists("s:input_prompt") && s:input_prompt != ''
+            let answer = input( s:input_prompt )
+            unlet s:input_prompt
+            echo ""
+            call SlimvCommand( 'python swank_return("' . answer . '")' )
+        endif
     endif
 endfunction
 
@@ -1288,7 +1310,7 @@ function! SlimvConnectSwank()
         echon "\rGetting SWANK connection info..."
         let starttime = localtime()
         while s:swank_version == '' && localtime()-starttime < g:slimv_timeout
-            call SlimvSwankResponse()
+            call SlimvSwankResponse(1)
         endwhile
 
         " Require some contribs
@@ -1300,10 +1322,10 @@ function! SlimvConnectSwank()
             let contribs = contribs . ' swank-fuzzy'
         endif
         execute "python swank_require('(" . contribs . ")')"
-        call SlimvSwankResponse()
+        call SlimvSwankResponse(1)
         if s:swank_version >= '2011-12-04'
             python swank_require('swank-repl')
-            call SlimvSwankResponse()
+            call SlimvSwankResponse(1)
         endif
         if s:swank_version >= '2008-12-23'
             call SlimvCommandGetResponse( ':create-repl', 'python swank_create_repl()', g:slimv_timeout )
@@ -1367,7 +1389,7 @@ function! SlimvSend( args, echoing, output )
     let s:swank_package = ''
     let s:refresh_disabled = 0
     call SlimvRefreshModeOn()
-    call SlimvRefreshReplBuffer()
+    call SlimvRefreshReplBufferEx(a:echoing)
 endfunction
 
 " Eval arguments in Lisp REPL
@@ -1378,6 +1400,11 @@ endfunction
 " Send argument silently to SWANK
 function! SlimvSendSilent( args )
     call SlimvSend( a:args, 0, 0 )
+endfunction
+
+" Send arguments in REPL and back the result to FlipFlop buffer.
+function! SlimvEvalFlipFlop( args )
+    call SlimvSend( a:args, 2, 1 )
 endfunction
 
 " Set command line after the prompt
@@ -2541,7 +2568,7 @@ endfunction
 " Eval contents of the 's' register, optionally store it in another register
 " Also optionally append a test form for quick testing (not stored in 'outreg')
 " If the test form contains '%1' then it 'wraps' the selection around the '%1'
-function! SlimvEvalSelection( outreg, testform )
+function! SlimvEvalSelection( outreg, testform, echomode )
     let sel = SlimvGetSelection()
     if a:outreg != '"'
         " Register was passed, so store current selection in register
@@ -2570,7 +2597,11 @@ function! SlimvEvalSelection( outreg, testform )
         " If this is the REPL buffer then go to EOF
         call s:EndOfBuffer()
     endif
-    call SlimvEval( lines )
+    if a:echomode == 2
+        call SlimvEvalFlipFlop( lines )
+    else
+        call SlimvEval( lines )
+    endif
 endfunction
 
 " Eval Lisp form.
@@ -2607,7 +2638,7 @@ endfunction
 " =====================================================================
 
 " Evaluate and test top level form at the cursor pos
-function! SlimvEvalTestDefun( testform )
+function! SlimvEvalTestDefun(testform, echomode)
     let outreg = v:register
     let oldpos = winsaveview()
     if !SlimvSelectDefun()
@@ -2615,12 +2646,12 @@ function! SlimvEvalTestDefun( testform )
     endif
     call SlimvFindPackage()
     call winrestview( oldpos ) 
-    call SlimvEvalSelection( outreg, a:testform )
+    call SlimvEvalSelection( outreg, a:testform, a:echomode )
 endfunction
 
 " Evaluate top level form at the cursor pos
-function! SlimvEvalDefun()
-    call SlimvEvalTestDefun( '' )
+function! SlimvEvalDefun(echomode)
+    call SlimvEvalTestDefun('', a:echomode)
 endfunction
 
 " Evaluate the whole buffer
@@ -2670,7 +2701,7 @@ function! SlimvEvalTestExp( testform )
     endif
     call SlimvFindPackage()
     call winrestview( oldpos ) 
-    call SlimvEvalSelection( outreg, a:testform )
+    call SlimvEvalSelection( outreg, a:testform, 1 )
 endfunction
 
 " Evaluate current s-expression at the cursor pos
@@ -2983,7 +3014,7 @@ function! SlimvCompileLoadFile()
         call SlimvCommandUsePackage( 'python swank_compile_file("' . filename . '")' )
         let starttime = localtime()
         while s:compiled_file == '' && localtime()-starttime < g:slimv_timeout
-            call SlimvSwankResponse()
+            call SlimvSwankResponse(1)
         endwhile
         if s:compiled_file != ''
             call SlimvCommandUsePackage( 'python swank_load_file("' . s:compiled_file . '")' )
@@ -3396,7 +3427,8 @@ endif "g:paredit_shortmaps
 endif "g:paredit_loaded
 
 " Evaluation commands
-call s:MenuMap( 'Slim&v.&Evaluation.Eval-&Defun',               g:slimv_leader.'d',  g:slimv_leader.'ed',  ':<C-U>call SlimvEvalDefun()<CR>' )
+call s:MenuMap( 'Slim&v.&Evaluation.Eval-&Defun',               g:slimv_leader.'d',  g:slimv_leader.'ed',  ':<C-U>call SlimvEvalDefun(1)<CR>' )
+call s:MenuMap( 'Slim&v.&Evaluation.Eval-Defun-&FlipFlop',      g:slimv_leader.'f',  g:slimv_leader.'ef',  ':<C-U>call SlimvEvalDefun(2)<CR>' )
 call s:MenuMap( 'Slim&v.&Evaluation.Eval-Current-&Exp',         g:slimv_leader.'e',  g:slimv_leader.'ee',  ':<C-U>call SlimvEvalExp()<CR>' )
 call s:MenuMap( 'Slim&v.&Evaluation.Eval-&Region',              g:slimv_leader.'r',  g:slimv_leader.'er',  ':call SlimvEvalRegion()<CR>' )
 call s:MenuMap( 'Slim&v.&Evaluation.Eval-&Buffer',              g:slimv_leader.'b',  g:slimv_leader.'eb',  ':<C-U>call SlimvEvalBuffer()<CR>' )
