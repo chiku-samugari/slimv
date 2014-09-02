@@ -743,9 +743,10 @@ def swank_listen():
                         if type(params) == str:
                             element = params.lower()
                             to_ignore = [':frame-call', ':quit-inspector', ':kill-thread', ':debug-thread']
-                            to_nodisp = [':describe-symbol']
+                            to_nodisp = []
                             to_prompt = [':undefine-function', ':swank-macroexpand-1', ':swank-macroexpand-all', ':disassemble-form', \
-                                         ':load-file', ':toggle-profile-fdefinition', ':profile-by-substring', ':swank-toggle-trace', 'sldb-break']
+                                         ':load-file', ':toggle-profile-fdefinition', ':profile-by-substring', ':swank-toggle-trace',\
+                                         'sldb-break', ':describe-symbol']
                             if action and action.name in to_ignore:
                                 # Just ignore the output for this message
                                 pass
