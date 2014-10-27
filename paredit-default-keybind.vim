@@ -2,7 +2,7 @@ imap <buffer> ( <Plug>(PareditInsertOpeningParen)
 imap <buffer> ) <Plug>(PareditInsertClosingParen)
 imap <buffer> " <Plug>(PareditInsertQuotes)
 imap <buffer> <BS> <Plug>(PareditBackspace)
-imap <buffer> <Del> <Plug>(PareditBackspace)
+imap <buffer> <Del> <Plug>(PareditDel)
 if &ft =~ '.*\(clojure\|scheme\|racket\).*' && g:paredit_smartjump
     nmap <buffer> ( <Plug>(PareditSmartJumpOpening0)
     nmap <buffer> ) <Plug>(PareditSmartJumpClosing0)
