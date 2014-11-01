@@ -1290,7 +1290,7 @@ def swank_output(echo):
         # Append SWANK output to REPL buffer
         append_repl(result, 0)
     elif echo == 2 and result != '':
-        vim.command('call FlipFlopShowText("' + re.sub(r'([\'"])', '\\\\\\1', result) + '")')
+        vim.command('call FlipFlopShowText("' + re.sub(r'([\\\'"])', r'\\\1', result) + '")')
     if debug_activated and debug_active:
         # Debugger was activated in this run
         vim.command('call SlimvOpenSldbBuffer()')
