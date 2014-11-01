@@ -135,8 +135,8 @@ function! PareditInitBuffer()
         nnoremap <buffer> <silent> <Plug>(PareditChangeSpeccb)           :<C-U>call PareditChangeSpec('cb',0)<CR>
         nnoremap <buffer> <silent> <Plug>(PareditChangeSpecciw)          :<C-U>call PareditChangeSpec('ciw',1)<CR>
         nnoremap <buffer> <silent> <Plug>(PareditChangeSpeccaw)          :<C-U>call PareditChangeSpec('caw',1)<CR>
-        call RepeatableNNoRemap('<Plug>(PareditPutRepeatablep', ':<C-U>call PareditPut("p")')
-        call RepeatableNNoRemap('<Plug>(PareditPutRepeatableP', ':<C-U>call PareditPut("P")')
+        call RepeatableNNoRemap('<Plug>(PareditPutRepeatablep)', ':<C-U>call PareditPut("p")')
+        call RepeatableNNoRemap('<Plug>(PareditPutRepeatableP)', ':<C-U>call PareditPut("P")')
         call RepeatableNNoRemap('<Plug>(PareditWrapRepeatable)', ':<C-U>call PareditWrap("(",")")')
         execute 'vnoremap <buffer> <silent> <Plug>(PareditWrapSelection) :<C-U>call PareditWrapSelection("(",")")<CR>'
         call RepeatableNNoRemap('<Plug>(PareditWrapDQRepeatable)', ':<C-U>call PareditWrap('."'".'"'."','".'"'."')")
