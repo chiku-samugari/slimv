@@ -3,7 +3,7 @@ imap <buffer> ) <Plug>(PareditInsertClosingParen)
 imap <buffer> " <Plug>(PareditInsertQuotes)
 imap <buffer> <BS> <Plug>(PareditBackspace)
 imap <buffer> <Del> <Plug>(PareditDel)
-if &ft =~ '.*\(clojure\|scheme\|racket\).*' && g:paredit_smartjump
+if &ft =~ s:fts_balancing_all_brackets && g:paredit_smartjump
     nmap <buffer> ( <Plug>(PareditSmartJumpOpening0)
     nmap <buffer> ) <Plug>(PareditSmartJumpClosing0)
     vmap <buffer> ( <Plug>(PareditSmartJumpOpening1)
@@ -46,7 +46,7 @@ execute 'nmap <buffer> <silent> ' . g:paredit_leader. '<Up> <Plug>(PareditSplit)
 execute 'nmap <buffer> <silent> ' . g:paredit_leader. '<Down>  <Plug>(PareditJoin)'
 execute 'nmap <buffer> ' . g:paredit_leader . 'I <Plug>(PareditRaiseRepeatable)'
 
-if &ft =~ '.*\(clojure\|scheme\|racket\).*'
+if &ft =~ s:fts_balancing_all_brackets
     imap <buffer> [ <Plug>(PareditInsertOpeningBracket)
     imap <buffer> ] <Plug>(PareditInsertClosingBracket)
     imap <buffer> { <Plug>(PareditInsertOpeningBrace)

@@ -48,7 +48,7 @@ endif
 " Custom <Leader> for the Paredit plugin
 if !exists( 'g:paredit_leader' )
     if exists( 'mapleader' )
-        let g:paredit_leader = mapleader
+        let g:paredit_leader = '<leader>'
     else
         let g:paredit_leader = ','
     endif
@@ -74,6 +74,9 @@ let s:repeat             = 0
 
 let s:yank_pos           = []
 
+" Filetypes with [] and {} pairs balanced as well
+let s:fts_balancing_all_brackets = '.*\(clojure\|hy\|scheme\|racket\).*'
+
 " =====================================================================
 "  General utility functions
 " =====================================================================
@@ -82,7 +85,7 @@ function! PareditInitBuffer()
     let b:paredit_init = 1
     " in case they are accidentally removed
     " Also define regular expressions to identify special characters used by paredit
-    if &ft =~ '.*\(clojure\|scheme\|racket\).*'
+    if &ft =~ s:fts_balancing_all_brackets
         let b:any_matched_char   = '(\|)\|\[\|\]\|{\|}\|\"'
         let b:any_matched_pair   = '()\|\[\]\|{}\|\"\"'
         let b:any_opening_char   = '(\|\[\|{'
@@ -190,7 +193,7 @@ function! PareditInitBuffer()
         silent! unmap  <buffer> cb
         silent! unmap  <buffer> ciw
         silent! unmap  <buffer> caw
-        if &ft =~ '.*\(clojure\|scheme\|racket\).*'
+        if &ft =~ s:fts_balancing_all_brackets
             silent! iunmap <buffer> [
             silent! iunmap <buffer> ]
             silent! iunmap <buffer> {
@@ -222,7 +225,7 @@ endfunction
 " Include all prefix and special characters in 'iskeyword'
 function! s:SetKeyword()
     let old_value = &iskeyword
-    if &ft =~ '.*\(clojure\|scheme\|racket\).*'
+    if &ft =~ s:fts_balancing_all_brackets
         setlocal iskeyword+=+,-,*,/,%,<,=,>,:,$,?,!,@-@,94,~,#,\|,&
     else
         setlocal iskeyword+=+,-,*,/,%,<,=,>,:,$,?,!,@-@,94,~,#,\|,&,.,{,},[,]
@@ -542,7 +545,7 @@ function! s:IsBalanced()
         return 0
     endif
 
-    if &ft =~ '.*\(clojure\|scheme\|racket\).*'
+    if &ft =~ s:fts_balancing_all_brackets
         let b1 = searchpair( '\[', '', '\]', 'brnmW', s:skip_sc, matchb )
         let b2 = searchpair( '\[', '', '\]',  'rnmW', s:skip_sc, matchf )
         if !(b1 == b2) && !(b1 == b2 - 1 && line[c-1] == '[') && !(b1 == b2 + 1 && line[c-1] == ']')
@@ -605,7 +608,7 @@ function! s:Unbalanced( matched )
     while 1
         let matched = tmp
         let tmp = substitute( tmp, '(\(\s*\))',   ' \1 ', 'g')
-        if &ft =~ '.*\(clojure\|scheme\|racket\).*'
+        if &ft =~ s:fts_balancing_all_brackets
             let tmp = substitute( tmp, '\[\(\s*\)\]', ' \1 ', 'g')
             let tmp = substitute( tmp, '{\(\s*\)}',   ' \1 ', 'g')
         endif
@@ -613,7 +616,7 @@ function! s:Unbalanced( matched )
         if tmp == matched
             " All paired chars eliminated
             let tmp = substitute( tmp, ')\(\s*\)(',   ' \1 ', 'g')
-            if &ft =~ '.*\(clojure\|scheme\|racket\).*'
+            if &ft =~ s:fts_balancing_all_brackets
                 let tmp = substitute( tmp, '\]\(\s*\)\[', ' \1 ', 'g')
                 let tmp = substitute( tmp, '}\(\s*\){',   ' \1 ', 'g')
             endif
@@ -778,7 +781,7 @@ function! s:ReGatherUp()
             normal! ddk
         endwhile
         normal! Jl
-    elseif g:paredit_electric_return && getline('.') =~ '^\s*\(\]\|}\)' && &ft =~ '.*\(clojure\|scheme\|racket\).*' 
+    elseif g:paredit_electric_return && getline('.') =~ '^\s*\(\]\|}\)' && &ft =~ s:fts_balancing_all_brackets
         " Re-gather electric returns in the current line for ']' and '}'
         normal! k
         while getline( line('.') ) =~ '^\s*$'
@@ -833,7 +836,7 @@ function! PareditInsertClosing( open, close )
             normal! Jl
             return
         endif
-        if len(nextline) > 0 && nextline[0] =~ '\]\|}' && &ft =~ '.*\(clojure\|scheme\|racket\).*' 
+        if len(nextline) > 0 && nextline[0] =~ '\]\|}' && &ft =~ s:fts_balancing_all_brackets
             " Re-gather electric returns in the line of the closing ']' or '}'
             call setline( line('.'), substitute( line, '\s*$', '', 'g' ) )
             normal! Jxl
@@ -998,7 +1001,7 @@ endfunction
 function! s:EraseFwd( count, startcol )
     let line = getline( '.' )
     let pos = col( '.' ) - 1
-    let reg = getreg( &clipboard == 'unnamed' ? '*' : '"' )
+    let reg = ''
     let ve_save = &virtualedit
     set virtualedit=all
     let c = a:count
@@ -1050,7 +1053,7 @@ endfunction
 function! s:EraseBck( count )
     let line = getline( '.' )
     let pos = col( '.' ) - 1
-    let reg = getreg( &clipboard == 'unnamed' ? '*' : '"' )
+    let reg = ''
     let c = a:count
     while c > 0 && pos > 0
         if pos > 1 && line[pos-2] == '\' && line[pos-1] =~ b:any_matched_char && (pos < 3 || line[pos-3] != '\')
@@ -1475,7 +1478,7 @@ function! s:FindClosing()
     endif
     call setpos( '.', [0, l, c, 0] )
 
-    if &ft =~ '.*\(clojure\|scheme\|racket\).*'
+    if &ft =~ s:fts_balancing_all_brackets
         call PareditFindClosing( '[', ']', 0 )
         let lp = line( '.' )
         let cp = col( '.' )
@@ -1750,6 +1753,10 @@ endif
 
 if !exists("g:paredit_disable_clojure")
     au FileType *clojure* call PareditInitBuffer()
+endif
+
+if !exists("g:paredit_disable_hy")
+    au FileType hy        call PareditInitBuffer()
 endif
 
 if !exists("g:paredit_disable_scheme")
