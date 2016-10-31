@@ -45,9 +45,9 @@ endfunction
 
 " Find swank.py in the Vim ftplugin directory (if not given in vimrc)
 if !exists( 'g:swank_path' )
-    let plugins = split( globpath( &runtimepath, 'ftplugin/**/swank.py'), '\n' )
-    if len( plugins ) > 0
-        let g:swank_path = s:Cygpath( plugins[0] )
+    let s:plugins = split( globpath( &runtimepath, 'ftplugin/**/swank.py'), '\n' )
+    if len(s:plugins) > 0
+        let g:swank_path = s:Cygpath(s:plugins[0])
     else
         let g:swank_path = 'swank.py'
     endif
