@@ -100,7 +100,7 @@ function! SlimvSwankCommand()
                 endif 
         elseif $STY != ''
             " GNU screen under Linux
-            return "! screen -X eval 'title slimv' 'screen " . cmd . "' 'select slimv'"
+            return "! screen -X eval 'title slimv' 'screen -t " . g:slimv_impl . ':' . g:swank_port . ' env SWANK_PORT=' . g:swank_port . ' ' . cmd . "' 'select slimv'"
         elseif $TMUX != ''
             " tmux under Linux
             return "! tmux new-window -d -n swank '" . cmd . "'"
@@ -2522,6 +2522,7 @@ function! SlimvConnectServer()
 	" Give swank server some time for disconnecting
         sleep 500m
     endif 
+    let g:swank_port = input("port: ", g:swank_port)
     if SlimvConnectSwank()
         let repl_win = bufwinnr( s:repl_buf )
         if s:repl_buf == -1 || ( g:slimv_repl_split && repl_win == -1 )
