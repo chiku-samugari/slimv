@@ -1,6 +1,6 @@
 " slimv.vim:    The Superior Lisp Interaction Mode for VIM
 " Version:      0.9.13
-" Last Change:  01 Nov 2015
+" Last Change:  02 Oct 2016
 " Maintainer:   Tamas Kovacs <kovisoft at gmail dot com>
 " License:      This file is placed in the public domain.
 "               No warranty, express or implied.
@@ -229,6 +229,21 @@ if !exists( 'g:slimv_ctags' )
     endif
 endif
 
+" Name of tags file used by slimv for find-definitions
+" If this is the empty string then no tags file is used
+if !exists( 'g:slimv_tags_file' )
+    let g:slimv_tags_file = tempname()
+endif
+
+" Prepend tags file to the tags list
+if g:slimv_tags_file != ''
+    if &tags == ''
+        let &tags=g:slimv_tags_file
+    else
+        let &tags=g:slimv_tags_file . ',' . &tags
+    endif
+endif
+
 " Package/namespace handling
 if !exists( 'g:slimv_package' )
     let g:slimv_package = 1
@@ -297,6 +312,7 @@ let s:save_showmode = &showmode                           " The original value f
 let s:python_initialized = 0                              " Is the embedded Python initialized?
 let s:swank_connected = 0                                 " Is the SWANK server connected?
 let s:swank_package = ''                                  " Package to use at the next SWANK eval
+let s:swank_package_form = ''                             " The entire form that was used to set current package
 let s:swank_form = ''                                     " Form to send to SWANK
 let s:refresh_disabled = 0                                " Set this variable temporarily to avoid recursive REPL rehresh calls
 let s:sldb_level = -1                                     " Are we in the SWANK debugger? -1 == no, else SLDB level
@@ -306,6 +322,7 @@ let s:win_id = 0                                          " Counter for generati
 let s:repl_buf = -1                                       " Buffer number for the REPL buffer
 let s:current_buf = -1                                    " Swank action was requested from this buffer
 let s:current_win = 0                                     " Swank action was requested from this window
+let s:read_string_mode = 0                                " Read string mode indicator
 let s:arglist_line = 0                                    " Arglist was requested in this line ...
 let s:arglist_col = 0                                     " ... and column
 let s:inspect_path = []                                   " Inspection path of the current object
@@ -1220,14 +1237,18 @@ function! SlimvFindPackage()
     if found
         " Find the package name with all folds open
         normal! zn
-        silent normal! ww
+        silent normal! w
+        let l:package_command = expand('<cword>')
+        silent normal! w
         let l:packagename_tokens = split(expand('<cWORD>'),')\|\s')
         normal! zN
         if l:packagename_tokens != []
             " Remove quote character from package name
             let s:swank_package = substitute( l:packagename_tokens[0], "'", '', '' )
+            let s:swank_package_form = "(" . l:package_command . " " . l:packagename_tokens[0] . ")\n"
         else
             let s:swank_package = ''
+            let s:swank_package_form = ''
         endif
     endif
     let &ignorecase = save_ic
@@ -1240,6 +1261,7 @@ function! SlimvCommandUsePackage( cmd )
     let s:refresh_disabled = 1
     call SlimvCommand( a:cmd )
     let s:swank_package = ''
+    let s:swank_package_form = ''
     let s:refresh_disabled = 0
     call SlimvRefreshReplBuffer()
 endfunction
@@ -1370,6 +1392,7 @@ function! SlimvSend( args, echoing, output )
     endif
     call SlimvCommand( 'python swank_input("s:swank_form")' )
     let s:swank_package = ''
+    let s:swank_package_form = ''
     let s:refresh_disabled = 0
     call SlimvRefreshModeOn()
     call SlimvRefreshReplBuffer()
@@ -1575,7 +1598,8 @@ function SlimvLispindent( lnum )
 endfunction
 
 " Return Lisp source code indentation at the given line
-function! SlimvIndent( lnum )
+" Does not keep the cursor position
+function! SlimvIndentUnsafe( lnum )
     if &autoindent == 0 || a:lnum <= 1
         " Start of the file
         return 0
@@ -1802,6 +1826,14 @@ function! SlimvIndent( lnum )
     endif
     return li
 endfunction 
+
+" Indentation routine, keeps original cursor position
+function! SlimvIndent( lnum )
+    let oldpos = getpos( '.' )
+    let indent = SlimvIndentUnsafe( a:lnum )
+    call cursor( oldpos[1], oldpos[2] )
+    return indent
+endfunction
 
 " Convert indent value to spaces or a mix of tabs and spaces
 " depending on the value of 'expandtab'
@@ -2440,7 +2472,7 @@ function! SlimvArglist( ... )
         endif
     endif
     call s:SetKeyword()
-    if s:swank_connected && c > 0 && line[c-1] =~ '\k\|)\|\]\|}\|"'
+    if s:swank_connected && !s:read_string_mode && c > 0 && line[c-1] =~ '\k\|)\|\]\|}\|"'
         " Display only if entering the first space after a keyword
         let arg = ''
         if SlimvGetFiletype() == 'r'
@@ -2568,7 +2600,7 @@ function! SlimvEvalSelection( outreg, testform )
     let sel = SlimvGetSelection()
     if a:outreg != '"' && a:outreg != '+'
         " Register was passed, so store current selection in register
-        call setreg( a:outreg, sel )
+        call setreg( a:outreg, s:swank_package_form . sel)
     endif
     let lines = [sel]
     if a:testform != ''
@@ -2985,6 +3017,7 @@ function! SlimvCompileDefun()
         let s:swank_form = SlimvGetSelection()
         call SlimvCommandUsePackage( 'python swank_compile_string("s:swank_form")' )
     endif
+    call winrestview( oldpos )
 endfunction
 
 " Compile and load whole file
@@ -3081,7 +3114,7 @@ function! SlimvDescribe(arg)
     endif
     " We don't want to try connecting here ... the error message would just 
     " confuse the balloon logic
-    if !s:swank_connected
+    if !s:swank_connected || s:read_string_mode
         return ''
     endif
     call SlimvFindPackage()
@@ -3236,7 +3269,7 @@ function! SlimvComplete( base )
     if a:base == ''
         return []
     endif
-    if s:swank_connected
+    if s:swank_connected && !s:read_string_mode
         " Save current buffer and window in case a swank command causes a buffer change
         let buf = bufnr( "%" )
         if winnr('$') < 2
@@ -3322,6 +3355,45 @@ function! SlimvCommandComplete( arglead, cmdline, cursorpos )
     return compl
 endfunction
 
+" Create a tags file containing the definitions
+" of the given symbol, then perform a tag lookup
+function! SlimvFindDefinitionsForEmacs( symbol )
+    if g:slimv_tags_file == ''
+        let msg = ''
+    else
+        let msg = SlimvCommandGetResponse( ':find-definitions-for-emacs', 'python swank_find_definitions_for_emacs("' . a:symbol . '")', 0 )
+    endif
+    try
+        if msg != ''
+            exec ":tag " . msg
+        else
+            exec ":tag " . a:symbol
+        endif
+    catch /^Vim\%((\a\+)\)\=:E426/
+        call SlimvError( "\r" . v:exception )
+    endtry
+endfunction
+
+" Lookup definition(s) of the symbol under cursor
+function! SlimvFindDefinitions()
+    if SlimvConnectSwank()
+        let symbol = SlimvSelectSymbol()
+        if symbol == ''
+            call SlimvError( "No symbol under cursor." )
+            return
+        endif
+        call SlimvFindDefinitionsForEmacs( symbol )
+    endif
+endfunction
+
+" Lookup definition(s) of symbol entered in prompt
+function! SlimvFindDefinitionsPrompt()
+    if SlimvConnectSwank()
+        let symbol = input( 'Find Definitions For: ', SlimvSelectSymbol() )
+        call SlimvFindDefinitionsForEmacs( symbol )
+    endif
+endfunction
+
 " Set current package
 function! SlimvSetPackage()
     if SlimvConnectSwank()
@@ -3375,6 +3447,9 @@ function! s:MenuMap( name, shortcut1, shortcut2, command )
     elseif g:slimv_keybindings == 2
         " Easy to remember (two-key) keybinding set
         let shortcut = a:shortcut2
+    else
+        " No bindings
+        let shortcut = ''
     endif
 
     if shortcut != ''
@@ -3411,6 +3486,9 @@ function! SlimvInitBuffer()
         inoremap <silent> <buffer> <Tab>      <C-R>=SlimvHandleTab()<CR>
     endif
     inoremap <silent> <buffer> <S-Tab>    <C-R>=pumvisible() ? "\<lt>C-P>" : "\<lt>S-Tab>"<CR>
+    if g:slimv_tags_file != ''
+        nnoremap <silent> <buffer> <C-]>      :call SlimvFindDefinitions()<CR>
+    endif
 
     " Setup balloonexp to display symbol description
     if g:slimv_balloon && has( 'balloon_eval' )
@@ -3426,6 +3504,7 @@ endfunction
 " Edit commands
 call s:MenuMap( 'Slim&v.Edi&t.Close-&Form',                     g:slimv_leader.')',  g:slimv_leader.'tc',  ':<C-U>call SlimvCloseForm()<CR>' )
 call s:MenuMap( 'Slim&v.Edi&t.&Complete-Symbol<Tab>Tab',        '',                  '',                   '<Ins><C-X><C-O>' )
+call s:MenuMap( 'Slim&v.Edi&t.Find-&Definitions\.\.\.',         g:slimv_leader.'j',  g:slimv_leader.'fd', ':call SlimvFindDefinitionsPrompt()<CR>' )
 
 if exists( 'g:paredit_loaded' )
 call s:MenuMap( 'Slim&v.Edi&t.&Paredit-Toggle',                 g:slimv_leader.'(',  g:slimv_leader.'(t',  ':<C-U>call PareditToggle()<CR>' )
