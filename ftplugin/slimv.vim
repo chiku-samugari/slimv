@@ -89,7 +89,7 @@ function! SlimvSwankCommand()
     if cmd != ''
         if g:slimv_windows || g:slimv_cygwin
             return '!start /MIN ' . cmd
-        elseif g:slimv_osx
+        elseif g:slimv_osx && $STY == ''
             let result = system('osascript -e "exists application \"iterm\""')
                 if result[:-2] == 'true'
                     let path2as = globpath( &runtimepath, 'ftplugin/**/iterm.applescript')
