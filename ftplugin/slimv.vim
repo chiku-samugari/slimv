@@ -1284,6 +1284,7 @@ function! SlimvConnectSwank()
         if g:swank_host == ''
             let g:swank_host = input( 'Swank server host name: ', 'localhost' )
         endif
+        let g:swank_port = input("port: ", g:swank_port)
         execute 'python swank_connect("' . g:swank_host . '", ' . g:swank_port . ', "result" )'
         if result != '' && ( g:swank_host == 'localhost' || g:swank_host == '127.0.0.1' )
             " SWANK server is not running, start server if possible
@@ -2522,7 +2523,6 @@ function! SlimvConnectServer()
 	" Give swank server some time for disconnecting
         sleep 500m
     endif
-    let g:swank_port = input("port: ", g:swank_port)
     if SlimvConnectSwank()
         let repl_win = bufwinnr( s:repl_buf )
         if s:repl_buf == -1 || ( g:slimv_repl_split && repl_win == -1 )
