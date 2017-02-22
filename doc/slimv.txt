@@ -1,4 +1,4 @@
-*slimv.txt*                    Slimv                 Last Change: 01 Nov 2015
+*slimv.txt*                    Slimv                 Last Change: 02 Oct 2016
 
 Slimv                                                                  *slimv*
                                Version 0.9.13
@@ -188,6 +188,10 @@ For the Swank options plese visit |swank-configuration|.
 
 |g:slimv_preferred|          Name of the preferred lisp implementation.
 
+|g:slimv_python_version|     If defined, determines Python version to use,
+                             when 3 use :python3 and friends, otherwise
+                             :python or :python3 is used as available.
+
 |g:slimv_repl_max_len|       Maximum number of lines in the REPL buffer.
 
 |g:slimv_repl_name|          Name of the REPL buffer.
@@ -212,6 +216,8 @@ For the Swank options plese visit |swank-configuration|.
 |g:slimv_swank_cmd|          Command used to start the Lisp SWANK server.
 
 |g:slimv_swank_scheme|       Command used to start the Scheme SWANK server.
+
+|g:slimv_tags_file|          Name of tags file used by Slimv. 
 
 |g:slimv_threads_name|       Name of the Threads buffer.
 
@@ -393,6 +399,13 @@ If ctags.exe is stored somewhere else, or the default ctags options are
 unsatisfactory, then override this option with the desired command.
 The default ctags command is:
   "ctags.exe -a --language-force=lisp *.lisp *.clj"
+
+                                                            *g:slimv_tags_file*
+The Find-Definition function gets location information from the SWANK server.
+Slimv uses a dedicated tags file for Find-Definitions. By default this is a
+temporary file but the filename can be overridden via this option. If this
+variable is set to the empty string ('') then the whole Find-Definitions
+function is disabled.
 
                                                           *g:slimv_keybindings*
 Defines the keybinding set used by Slimv.
@@ -630,6 +643,12 @@ Lisp form built when issuing the 'apropos' command.
 Example:
     let g:slimv_template_apropos = '(apropos "%1")'
 
+                                                       *g:slimv_python_version*
+Selects the python version to use. 
+When exists and set to 3, the :python3 and :py3file commands are used, when
+exists and not set to 3, the :python and :pyfile commands are used, and when
+it is not defined, has('python') has('python3') determine which are used.
+
 -------------------------------------------------------------------------------
                                                                *slimv-keyboard*
 
@@ -653,10 +672,12 @@ sequence, then you may want to fine tune these Vim options:
     <C-X>0           Close Form
     <Tab>            Complete Symbol
     <Space>          Function Arglist
+    <C-]>            Find Definitions (Tag Lookup)
 
     Edit commands (Normal mode):
     ,)      ,tc      Close Form
     ,(      ,(t      Paredit Toggle
+    ,j      ,fd      Find Definitions
 
     Evaluation commands:
 ["x],d  ["x],ed      Eval Defun (current top level form) [put in register x]

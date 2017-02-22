@@ -1,7 +1,7 @@
 " paredit.vim:
 "               Paredit mode for Slimv
 " Version:      0.9.13
-" Last Change:  05 Sep 2015
+" Last Change:  15 Jan 2017
 " Maintainer:   Tamas Kovacs <kovisoft at gmail dot com>
 " License:      This file is placed in the public domain.
 "               No warranty, express or implied.
@@ -63,9 +63,6 @@ endif
 "  Other variable definitions
 " =====================================================================
 
-" Skip matches inside string or comment or after '\'
-let s:skip_sc = '(synIDattr(synID(line("."), col("."), 0), "name") =~ "[Ss]tring\\|[Cc]omment\\|[Ss]pecial\\|clojureRegexp\\|clojurePattern" || getline(line("."))[col(".")-2] == "\\")'
-
 " Valid macro prefix characters
 let s:any_macro_prefix   = "'" . '\|`\|#\|@\|\~\|,\|\^'
 
@@ -75,7 +72,7 @@ let s:repeat             = 0
 let s:yank_pos           = []
 
 " Filetypes with [] and {} pairs balanced as well
-let s:fts_balancing_all_brackets = '.*\(clojure\|hy\|scheme\|racket\).*'
+let s:fts_balancing_all_brackets = '.*\(clojure\|hy\|scheme\|racket\|shen\).*'
 
 " =====================================================================
 "  General utility functions
@@ -458,6 +455,21 @@ function! s:SynIDMatch( regexp, line, col, match_eol )
     return synIDattr( synID( a:line, col, 0), 'name' ) =~ a:regexp
 endfunction
 
+" Expression used to check whether we should skip a match with searchpair()
+function! s:SkipExpr()
+    let l = line('.')
+    let c = col('.')
+    if synIDattr(synID(l, c, 0), "name") =~ "[Ss]tring\\|[Cc]omment\\|[Ss]pecial\\|clojureRegexp\\|clojurePattern"
+        " Skip parens inside strings, comments, special elements
+        return 1
+    endif
+    if getline(l)[c-2] == "\\" && getline(l)[c-3] != "\\"
+        " Skip parens escaped by '\'
+        return 1
+    endif
+    return 0
+endfunction
+
 " Is the current cursor position inside a comment?
 function! s:InsideComment( ... )
     let l = a:0 ? a:1 : line('.')
@@ -540,14 +552,14 @@ function! s:IsBalanced()
         let matchb = prompt
     endif
     if line[c-1] == '('
-        let p1 = searchpair( '(', '', ')', 'brnmWc', s:skip_sc, matchb )
-        let p2 = searchpair( '(', '', ')',  'rnmW' , s:skip_sc, matchf )
+        let p1 = searchpair( '(', '', ')', 'brnmWc', 's:SkipExpr()', matchb )
+        let p2 = searchpair( '(', '', ')',  'rnmW' , 's:SkipExpr()', matchf )
     elseif line[c-1] == ')'
-        let p1 = searchpair( '(', '', ')', 'brnmW' , s:skip_sc, matchb )
-        let p2 = searchpair( '(', '', ')',  'rnmWc', s:skip_sc, matchf )
+        let p1 = searchpair( '(', '', ')', 'brnmW' , 's:SkipExpr()', matchb )
+        let p2 = searchpair( '(', '', ')',  'rnmWc', 's:SkipExpr()', matchf )
     else
-        let p1 = searchpair( '(', '', ')', 'brnmW' , s:skip_sc, matchb )
-        let p2 = searchpair( '(', '', ')',  'rnmW' , s:skip_sc, matchf )
+        let p1 = searchpair( '(', '', ')', 'brnmW' , 's:SkipExpr()', matchb )
+        let p2 = searchpair( '(', '', ')',  'rnmW' , 's:SkipExpr()', matchf )
     endif
     if p1 != p2
         " Number of opening and closing parens differ
@@ -556,28 +568,28 @@ function! s:IsBalanced()
 
     if &ft =~ s:fts_balancing_all_brackets
         if line[c-1] == '['
-            let b1 = searchpair( '\[', '', '\]', 'brnmWc', s:skip_sc, matchb )
-            let b2 = searchpair( '\[', '', '\]',  'rnmW' , s:skip_sc, matchf )
+            let b1 = searchpair( '\[', '', '\]', 'brnmWc', 's:SkipExpr()', matchb )
+            let b2 = searchpair( '\[', '', '\]',  'rnmW' , 's:SkipExpr()', matchf )
         elseif line[c-1] == ']'
-            let b1 = searchpair( '\[', '', '\]', 'brnmW' , s:skip_sc, matchb )
-            let b2 = searchpair( '\[', '', '\]',  'rnmWc', s:skip_sc, matchf )
+            let b1 = searchpair( '\[', '', '\]', 'brnmW' , 's:SkipExpr()', matchb )
+            let b2 = searchpair( '\[', '', '\]',  'rnmWc', 's:SkipExpr()', matchf )
         else
-            let b1 = searchpair( '\[', '', '\]', 'brnmW' , s:skip_sc, matchb )
-            let b2 = searchpair( '\[', '', '\]',  'rnmW' , s:skip_sc, matchf )
+            let b1 = searchpair( '\[', '', '\]', 'brnmW' , 's:SkipExpr()', matchb )
+            let b2 = searchpair( '\[', '', '\]',  'rnmW' , 's:SkipExpr()', matchf )
         endif
         if b1 != b2
             " Number of opening and closing brackets differ
             return 0
         endif
         if line[c-1] == '{'
-            let b1 = searchpair( '{', '', '}', 'brnmWc', s:skip_sc, matchb )
-            let b2 = searchpair( '{', '', '}',  'rnmW' , s:skip_sc, matchf )
+            let b1 = searchpair( '{', '', '}', 'brnmWc', 's:SkipExpr()', matchb )
+            let b2 = searchpair( '{', '', '}',  'rnmW' , 's:SkipExpr()', matchf )
         elseif line[c-1] == '}'
-            let b1 = searchpair( '{', '', '}', 'brnmW' , s:skip_sc, matchb )
-            let b2 = searchpair( '{', '', '}',  'rnmWc', s:skip_sc, matchf )
+            let b1 = searchpair( '{', '', '}', 'brnmW' , 's:SkipExpr()', matchb )
+            let b2 = searchpair( '{', '', '}',  'rnmWc', 's:SkipExpr()', matchf )
         else
-            let b1 = searchpair( '{', '', '}', 'brnmW' , s:skip_sc, matchb )
-            let b2 = searchpair( '{', '', '}',  'rnmW' , s:skip_sc, matchf )
+            let b1 = searchpair( '{', '', '}', 'brnmW' , 's:SkipExpr()', matchb )
+            let b2 = searchpair( '{', '', '}',  'rnmW' , 's:SkipExpr()', matchf )
         endif
         if b1 != b2
             " Number of opening and closing curly braces differ
@@ -658,14 +670,14 @@ endfunction
 function! PareditFindOpening( open, close, select )
     let open  = escape( a:open , '[]' )
     let close = escape( a:close, '[]' )
-    call searchpair( open, '', close, 'bW', s:skip_sc )
+    call searchpair( open, '', close, 'bW', 's:SkipExpr()' )
     if a:select
-        call searchpair( open, '', close, 'W', s:skip_sc )
+        call searchpair( open, '', close, 'W', 's:SkipExpr()' )
         let save_ve = &ve
         set ve=all 
         normal! lvh
         let &ve = save_ve
-        call searchpair( open, '', close, 'bW', s:skip_sc )
+        call searchpair( open, '', close, 'bW', 's:SkipExpr()' )
         if &selection == 'inclusive'
             " Trim last character from the selection, it will be included anyway
             normal! oho
@@ -682,24 +694,24 @@ function! PareditFindClosing( open, close, select )
         if line[col('.')-1] != a:open
             normal! h
         endif
-        call searchpair( open, '', close, 'W', s:skip_sc )
-        call searchpair( open, '', close, 'bW', s:skip_sc )
+        call searchpair( open, '', close, 'W', 's:SkipExpr()' )
+        call searchpair( open, '', close, 'bW', 's:SkipExpr()' )
         normal! v
-        call searchpair( open, '', close, 'W', s:skip_sc )
+        call searchpair( open, '', close, 'W', 's:SkipExpr()' )
         if &selection != 'inclusive'
             normal! l
         endif
     else
-        call searchpair( open, '', close, 'W', s:skip_sc )
+        call searchpair( open, '', close, 'W', 's:SkipExpr()' )
     endif
 endfunction
 
 " Returns the nearest opening character to the cursor
 " Used for smart jumping in Clojure
 function! PareditSmartJumpOpening( select )
-    let [paren_line, paren_col] = searchpairpos('(', '', ')', 'bWn', s:skip_sc)
-    let [bracket_line, bracket_col] = searchpairpos('\[', '', '\]', 'bWn', s:skip_sc)
-    let [brace_line, brace_col] = searchpairpos('{', '', '}', 'bWn', s:skip_sc)
+    let [paren_line, paren_col] = searchpairpos('(', '', ')', 'bWn', 's:SkipExpr()')
+    let [bracket_line, bracket_col] = searchpairpos('\[', '', '\]', 'bWn', 's:SkipExpr()')
+    let [brace_line, brace_col] = searchpairpos('{', '', '}', 'bWn', 's:SkipExpr()')
     let paren_score = paren_line * 10000 + paren_col
     let bracket_score = bracket_line * 10000 + bracket_col
     let brace_score = brace_line * 10000 + brace_col
@@ -715,9 +727,9 @@ endfunction
 " Returns the nearest opening character to the cursor
 " Used for smart jumping in Clojure
 function! PareditSmartJumpClosing( select )
-    let [paren_line, paren_col] = searchpairpos('(', '', ')', 'Wn', s:skip_sc)
-    let [bracket_line, bracket_col] = searchpairpos('\[', '', '\]', 'Wn', s:skip_sc)
-    let [brace_line, brace_col] = searchpairpos('{', '', '}', 'Wn', s:skip_sc)
+    let [paren_line, paren_col] = searchpairpos('(', '', ')', 'Wn', 's:SkipExpr()')
+    let [bracket_line, bracket_col] = searchpairpos('\[', '', '\]', 'Wn', 's:SkipExpr()')
+    let [brace_line, brace_col] = searchpairpos('{', '', '}', 'Wn', 's:SkipExpr()')
     let paren_score = paren_line * 10000 + paren_col
     let bracket_score = bracket_line * 10000 + bracket_col
     let brace_score = brace_line * 10000 + brace_col
@@ -735,7 +747,7 @@ function! PareditFindDefunBck()
     let l = line( '.' )
     let matchb = max( [l-g:paredit_matchlines, 1] )
     let oldpos = getpos( '.' ) 
-    let newpos = searchpairpos( '(', '', ')', 'brW', s:skip_sc, matchb )
+    let newpos = searchpairpos( '(', '', ')', 'brW', 's:SkipExpr()', matchb )
     if newpos[0] == 0
         " Already standing on a defun, find the end of the previous one
         let newpos = searchpos( ')', 'bW' )
@@ -747,7 +759,7 @@ function! PareditFindDefunBck()
             call setpos( '.', oldpos )
         else
             " Find opening paren
-            let pairpos = searchpairpos( '(', '', ')', 'brW', s:skip_sc, matchb )
+            let pairpos = searchpairpos( '(', '', ')', 'brW', 's:SkipExpr()', matchb )
             if pairpos[0] == 0
                 " ')' has no matching pair
                 call setpos( '.', oldpos )
@@ -761,7 +773,7 @@ function! PareditFindDefunFwd()
     let l = line( '.' )
     let matchf = min( [l+g:paredit_matchlines, line('$')] )
     let oldpos = getpos( '.' ) 
-    call searchpair( '(', '', ')', 'brW', s:skip_sc, matchf )
+    call searchpair( '(', '', ')', 'brW', 's:SkipExpr()', matchf )
     normal! %
     let newpos = searchpos( '(', 'W' )
     while newpos[0] != 0 && (s:InsideComment() || s:InsideString())
@@ -849,7 +861,7 @@ function! PareditInsertClosing( open, close )
     endif
     let open  = escape( a:open , '[]' )
     let close = escape( a:close, '[]' )
-    let newpos = searchpairpos( open, '', close, 'nW', s:skip_sc )
+    let newpos = searchpairpos( open, '', close, 'nW', 's:SkipExpr()' )
     if g:paredit_electric_return && newpos[0] > line('.')
         " Closing paren is in a line below, check if there are electric returns to re-gather
         while getline('.') =~ '^\s*$'
@@ -884,7 +896,7 @@ function! PareditInsertClosing( open, close )
         let &ve = save_ve
         return retval
     endif
-    if searchpair( open, '', close, 'W', s:skip_sc ) > 0
+    if searchpair( open, '', close, 'W', 's:SkipExpr()' ) > 0
         normal! l
     endif
     "TODO: indent after going to closing character
@@ -1714,9 +1726,9 @@ function! PareditWrap( open, close )
                 let &selection="inclusive"
                 normal! v
                 if is_starting_quote
-                    call search( '\\\@<!"', 'W', s:skip_sc )
+                    call search( '\\\@<!"', 'W', 's:SkipExpr()' )
                 else
-                    call search( '\\\@<!"', 'bW', s:skip_sc )
+                    call search( '\\\@<!"', 'bW', 's:SkipExpr()' )
                 endif
                 execute "normal! " . "\<Esc>"
             endif
@@ -1816,3 +1828,6 @@ if !exists("g:paredit_disable_scheme")
     au FileType racket    call PareditInitBuffer()
 endif
 
+if !exists("g:paredit_disable_shen")
+    au FileType shen      call PareditInitBuffer()
+endif

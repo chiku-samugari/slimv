@@ -5,7 +5,7 @@
 # SWANK client for Slimv
 # swank.py:     SWANK client code for slimv.vim plugin
 # Version:      0.9.13
-# Last Change:  11 Feb 2016
+# Last Change:  16 Jan 2017
 # Maintainer:   Tamas Kovacs <kovisoft at gmail dot com>
 # License:      This file is placed in the public domain.
 #               No warranty, express or implied.
@@ -13,12 +13,14 @@
 # 
 ############################################################################### 
 
+from __future__ import print_function
 
 import socket
 import time
 import select
 import string
 import re
+import sys
 
 input_port      = 4005
 output_port     = 4006
@@ -47,6 +49,7 @@ inspect_lines   = 0             # Number of lines in the Inspector (excluding he
 inspect_newline = True          # Start a new line in the Inspector (for multi-part objects)
 inspect_package = ''            # Package used for the current Inspector
 swank_version   = ''            # Swank version string in format YYYY-MM-DD
+swank_param     = ''            # Additional parameter for the swank listener
 
 
 ###############################################################################
@@ -293,9 +296,15 @@ def parse_location(lst):
 
 def unicode_len(text):
     if use_unicode:
-        return len(unicode(text, "utf-8"))
+        if sys.version_info[0] > 2:
+            return len(str(text))
+        else:
+            return len(unicode(text, "utf-8"))
     else:
-        return len(text)
+        if sys.version_info[0] > 2:
+            return len(text.encode('utf-8'))
+        else:
+            return len(text)
 
 def swank_send(text):
     global sock
@@ -305,9 +314,12 @@ def swank_send(text):
     l = "%06x" % unicode_len(text)
     t = l + text
     if debug:
-        print 'Sending:', t
+        print( 'Sending:', t)
     try:
-        sock.send(t)
+        if sys.version_info[0] > 2:
+            sock.send(t.encode('utf-8'))
+        else:
+            sock.send(t)
     except socket.error:
         vim.command("let s:swank_result='Socket error when sending to SWANK server.\n'")
         swank_disconnect()
@@ -328,7 +340,10 @@ def swank_recv_len(timeout):
             swank_disconnect()
             return rec
         while data and len(rec) < lenbytes:
-            rec = rec + data
+            if sys.version_info[0] > 2:
+                rec = rec + data.decode('utf-8')
+            else:
+                rec = rec + data
             l = l - len(data)
             if l > 0:
                 try:
@@ -368,7 +383,10 @@ def swank_recv(msglen, timeout):
                     vim.command("let s:swank_result='Socket error when receiving from SWANK server.\n'")
                     swank_disconnect()
                     return rec
-                rec = rec + data
+                if sys.version_info[0] > 2:
+                    rec = rec + data.decode('utf-8')
+                else:
+                    rec = rec + data
     rec = ''
 
 def swank_parse_inspect_content(pcont):
@@ -649,6 +667,7 @@ def swank_listen():
     global package
     global pid
     global swank_version
+    global swank_param
 
     retval = ''
     msgcount = 0
@@ -661,10 +680,10 @@ def swank_listen():
         timeout = 0.0
         msgcount = msgcount + 1
         if debug:
-            print 'swank_recv_len received', rec
+            print('swank_recv_len received', rec)
         msglen = int(rec, 16)
         if debug:
-            print 'Received length:', msglen
+            print('Received length:', msglen)
         if msglen > 0:
             # length already received so it must be followed by data
             # use a higher timeout
@@ -673,17 +692,17 @@ def swank_listen():
             logprint(rec)
             [s, r] = parse_sexpr( rec )
             if debug:
-                print 'Parsed:', r
+                print('Parsed:', r)
             if len(r) > 0:
                 r_id = r[-1]
                 message = r[0].lower()
                 if debug:
-                    print 'Message:', message
+                    print('Message:', message)
 
                 if message == ':open-dedicated-output-stream':
                     output_port = int( r[1].lower(), 10 )
                     if debug:
-                        print ':open-dedicated-output-stream result:', output_port
+                        print(':open-dedicated-output-stream result:', output_port)
                     break
 
                 elif message == ':presentation-start':
@@ -705,10 +724,12 @@ def swank_listen():
                 elif message == ':read-string':
                     # REPL requests entering a string
                     read_string = r[1:3]
+                    vim.command('let s:read_string_mode=1')
 
                 elif message == ':read-from-minibuffer':
                     # REPL requests entering a string in the command line
                     read_string = r[1:3]
+                    vim.command('let s:read_string_mode=1')
                     vim.command("let s:input_prompt='%s'" % unquote(r[3]).replace("'", "''"))
 
                 elif message == ':indentation-update':
@@ -721,6 +742,7 @@ def swank_listen():
 
                 elif message == ':return':
                     read_string = None
+                    vim.command('let s:read_string_mode=0')
                     if len(r) > 1:
                         result = r[1][0].lower()
                     else:
@@ -798,7 +820,7 @@ def swank_listen():
                                 package = pkg[':name']
                                 prompt = pkg[':prompt']
                                 vim.command('let s:swank_version="' + swank_version + '"')
-                                if swank_version >= '2011-11-08':
+                                if len(swank_version) < 8 or swank_version >= '2011-11-08':
                                     # Recent swank servers count bytes instead of unicode characters
                                     use_unicode = False
                                 vim.command('let s:lisp_version="' + imp[':version'] + '"')
@@ -823,6 +845,20 @@ def swank_listen():
                                     if type(params[0]) == list and type(params[0][0]) == list:
                                         compl = "\n".join(map(lambda x: x[0], params[0]))
                                         retval = retval + compl.replace('"', '')
+                                elif action.name == ':find-definitions-for-emacs':
+                                    if type(params[0]) == list and type(params[0][1]) == list and params[0][1][0] == ':location':
+                                        tags_file = vim.eval("g:slimv_tags_file")
+                                        temp = open(tags_file, 'w')
+                                        myitems = [[elem[1][1][1], elem[1][2][1]] for elem in params]
+                                        for i in myitems:
+                                            temp.write(swank_param)
+                                            temp.write('\t')
+                                            temp.write(i[0].replace('"', ''))
+                                            temp.write('\t')
+                                            temp.write(":go %s" % i[1])
+                                            temp.write('\n')
+                                        temp.close()
+                                        retval = swank_param
                                 elif action.name == ':list-threads':
                                     swank_parse_list_threads(r[1])
                                 elif action.name == ':xref':
@@ -941,13 +977,13 @@ def swank_connection_info():
 
 def swank_create_repl():
     global swank_version
-    if swank_version >= '2014-10-01':
+    if len(swank_version) < 8 or swank_version >= '2014-10-01':
         swank_rex(':create-repl', '(swank-repl:create-repl nil)', get_swank_package(), 't')
     else:
         swank_rex(':create-repl', '(swank:create-repl nil)', get_swank_package(), 't')
 
 def swank_eval(exp):
-    if swank_version >= '2014-10-01':
+    if len(swank_version) < 8 or swank_version >= '2014-10-01':
         cmd = '(swank-repl:listener-eval ' + requote(exp) + ')'
     else:
         cmd = '(swank:listener-eval ' + requote(exp) + ')'
@@ -955,7 +991,7 @@ def swank_eval(exp):
 
 def swank_eval_in_frame(exp, n):
     pkg = get_swank_package()
-    if swank_version >= '2011-11-21':
+    if len(swank_version) < 8 or swank_version >= '2011-11-21':
         cmd = '(swank:eval-string-in-frame ' + requote(exp) + ' ' + str(n) + ' ' + pkg + ')'
     else:
         cmd = '(swank:eval-string-in-frame ' + requote(exp) + ' ' + str(n) + ')'
@@ -1034,12 +1070,14 @@ def swank_return_string(s):
     global read_string
     swank_send('(:emacs-return-string ' + read_string[0] + ' ' + read_string[1] + ' ' + requote(s) + ')')
     read_string = None
+    vim.command('let s:read_string_mode=0')
 
 def swank_return(s):
     global read_string
     if s != '':
         swank_send('(:emacs-return ' + read_string[0] + ' ' + read_string[1] + ' "' + s + '")')
     read_string = None
+    vim.command('let s:read_string_mode=0')
 
 def swank_inspect(symbol):
     global inspect_package
@@ -1062,7 +1100,7 @@ def swank_inspector_pop():
 
 def swank_inspect_in_frame(symbol, n):
     key = str(n) + " " + symbol
-    if frame_locals.has_key(key):
+    if key in frame_locals:
         cmd = '(swank:inspect-frame-var ' + str(n) + " " + str(frame_locals[key]) + ')'
     else:
         cmd = '(swank:inspect-in-frame "' + symbol + '" ' + str(n) + ')'
@@ -1164,6 +1202,12 @@ def swank_list_threads():
 def swank_kill_thread(index):
     cmd = '(swank:kill-nth-thread ' + str(index) + ')'
     swank_rex(':kill-thread', cmd, get_swank_package(), 't', str(index))
+
+def swank_find_definitions_for_emacs(str):
+    global swank_param
+    swank_param = str
+    cmd = '(swank:find-definitions-for-emacs "' + str + '")'
+    swank_rex(':find-definitions-for-emacs', cmd, get_package(), ':repl-thread')
 
 def swank_debug_thread(index):
     cmd = '(swank:debug-nth-thread ' + str(index) + ')'
