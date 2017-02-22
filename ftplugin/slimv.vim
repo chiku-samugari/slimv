@@ -3573,7 +3573,7 @@ endfunction
 " Edit commands
 call s:MenuMap( 'Slim&v.Edi&t.Close-&Form',                     g:slimv_leader.')',  g:slimv_leader.'tc',  ':<C-U>call SlimvCloseForm()<CR>' )
 call s:MenuMap( 'Slim&v.Edi&t.&Complete-Symbol<Tab>Tab',        '',                  '',                   '<Ins><C-X><C-O>' )
-call s:MenuMap( 'Slim&v.Edi&t.Find-&Definitions\.\.\.',         g:slimv_leader.'j',  g:slimv_leader.'fd', ':call SlimvFindDefinitionsPrompt()<CR>' )
+call s:MenuMap( 'Slim&v.Edi&t.Find-&Definitions\.\.\.',         g:slimv_leader.'I',  g:slimv_leader.'fd', ':call SlimvFindDefinitionsPrompt()<CR>' )
 
 if exists( 'g:paredit_loaded' )
 call s:MenuMap( 'Slim&v.Edi&t.&Paredit-Toggle',                 g:slimv_leader.'(',  g:slimv_leader.'(t',  ':<C-U>call PareditToggle()<CR>' )
