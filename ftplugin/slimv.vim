@@ -2592,6 +2592,7 @@ function! SlimvConnectServer()
     if s:swank_connected
         execute s:py_cmd . "swank_disconnect()"
         let s:swank_connected = 0
+        echo "Disconnected from SWANK server on port " . g:swank_port  . "."
 	" Give swank server some time for disconnecting
         sleep 500m
     endif
