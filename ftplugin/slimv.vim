@@ -1341,9 +1341,11 @@ function! SlimvConnectSwank()
         if g:swank_host == ''
             let g:swank_host = input( 'Swank server host name: ', 'localhost' )
         endif
+        let old_port = g:swank_port
         let g:swank_port = input("port: ", g:swank_port)
         if(g:swank_port == '')
             echo "Given no port number -- cancel connect operation."
+            let g:swank_port = old_port
             return 0
         endif
         execute s:py_cmd 'swank_connect("' . g:swank_host . '", ' . g:swank_port . ', "result" )'
