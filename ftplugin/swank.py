@@ -1,11 +1,11 @@
-#!/usr/bin/env python)
+#!/usr/bin/env python
 
 ###############################################################################
 #
 # SWANK client for Slimv
 # swank.py:     SWANK client code for slimv.vim plugin
-# Version:      0.9.13
-# Last Change:  16 Jan 2017
+# Version:      0.9.14
+# Last Change:  18 Apr 2017
 # Maintainer:   Tamas Kovacs <kovisoft at gmail dot com>
 # License:      This file is placed in the public domain.
 #               No warranty, express or implied.
@@ -63,7 +63,10 @@ def logprint(text):
         f.close()
 
 def logtime(text):
-    logprint(text + ' ' + str(time.clock()))
+    if sys.version_info >= (3, 3):
+        logprint(text + ' ' + str(time.perf_counter()))
+    else:
+        logprint(text + ' ' + str(time.clock()))
 
 ###############################################################################
 # Simple Lisp s-expression parser
@@ -846,19 +849,26 @@ def swank_listen():
                                         compl = "\n".join(map(lambda x: x[0], params[0]))
                                         retval = retval + compl.replace('"', '')
                                 elif action.name == ':find-definitions-for-emacs':
-                                    if type(params[0]) == list and type(params[0][1]) == list and params[0][1][0] == ':location':
-                                        tags_file = vim.eval("g:slimv_tags_file")
-                                        temp = open(tags_file, 'w')
-                                        myitems = [[elem[1][1][1], elem[1][2][1]] for elem in params]
-                                        for i in myitems:
-                                            temp.write(swank_param)
-                                            temp.write('\t')
-                                            temp.write(i[0].replace('"', ''))
-                                            temp.write('\t')
-                                            temp.write(":go %s" % i[1])
-                                            temp.write('\n')
-                                        temp.close()
-                                        retval = swank_param
+                                    tags_file = vim.eval("g:slimv_tags_file")
+                                    maxwidth = int(vim.eval("&columns")) - 16
+                                    temp = open(tags_file, 'w')
+                                    myitems = [[elem[1][1][1], elem[1][2][1], elem[1][3][1], elem[0]]
+                                               for elem in params
+                                                   if type(elem) == list and type(elem[1]) == list and elem[1][0] == ':location']
+                                    for i in myitems:
+                                        temp.write(swank_param)
+                                        temp.write('\t')
+                                        temp.write(i[0].replace('"', ''))
+                                        cmd = ":go %s" % i[1]
+                                        if i[2][0] == '"':
+                                            # swank provided a code snippet too
+                                            cmd = cmd + ' " ' + ' '.join(unquote(i[2]).split())
+                                        elif i[3][0] == '"':
+                                            # no code snippet, print location name
+                                            cmd = cmd + ' " ' + ' '.join(unquote(i[3]).split())
+                                        temp.write("\t%s\n" % cmd[:maxwidth])
+                                    temp.close()
+                                    retval = swank_param
                                 elif action.name == ':list-threads':
                                     swank_parse_list_threads(r[1])
                                 elif action.name == ':xref':

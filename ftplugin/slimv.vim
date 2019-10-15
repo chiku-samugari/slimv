@@ -1,6 +1,6 @@
 " slimv.vim:    The Superior Lisp Interaction Mode for VIM
-" Version:      0.9.13
-" Last Change:  18 Jan 2017
+" Version:      0.9.14
+" Last Change:  30 Sep 2019
 " Maintainer:   Tamas Kovacs <kovisoft at gmail dot com>
 " License:      This file is placed in the public domain.
 "               No warranty, express or implied.
@@ -98,7 +98,13 @@ function! SlimvSwankCommand()
     if cmd != ''
         if g:slimv_windows || g:slimv_cygwin
             return '!start /MIN ' . cmd
-        elseif g:slimv_osx && $STY == ''
+        elseif $STY != ''
+            " GNU screen under Linux or macOS
+            return "! screen -X eval 'title slimv' 'screen -t " . g:slimv_impl . ':' . g:swank_port . ' env SWANK_PORT=' . g:swank_port . ' ' . cmd . "' 'select slimv'"
+        elseif $TMUX != ''
+            " tmux under Linux or macOS
+            return "! tmux new-window -d -n swank '" . cmd . "'"
+        elseif g:slimv_osx
             let result = system('osascript -e "exists application \"iterm\""')
                 if result[:-2] == 'true'
                     let path2as = globpath( &runtimepath, 'ftplugin/**/iterm.applescript')
@@ -106,13 +112,7 @@ function! SlimvSwankCommand()
                 else
                     " doubles quotes within 'cmd' need to become '\\\"'
                     return '!osascript -e "tell application \"Terminal\" to do script \"' . escape(escape(cmd, '"'), '\"') . '\""'
-                endif
-        elseif $STY != ''
-            " GNU screen under Linux
-            return "! screen -X eval 'title slimv' 'screen -t " . g:slimv_impl . ':' . g:swank_port . ' env SWANK_PORT=' . g:swank_port . ' ' . cmd . "' 'select slimv'"
-        elseif $TMUX != ''
-            " tmux under Linux
-            return "! tmux new-window -d -n swank '" . cmd . "'"
+                endif 
         elseif $DISPLAY == ''
             " No X, no terminal multiplexer. Cannot run swank server.
             call SlimvErrorWait( 'No X server. Run Vim from screen/tmux or start SWANK server manually.' )
@@ -183,6 +183,11 @@ endif
 " Shall we open REPL buffer in split window?
 if !exists( 'g:slimv_repl_split' )
     let g:slimv_repl_split = 1
+endif
+
+" Size of the split window
+if !exists( 'g:slimv_repl_split_size' )
+    let g:slimv_repl_split_size = ''
 endif
 
 " Wrap long lines in REPL buffer
@@ -521,9 +526,14 @@ function! SlimvSwankResponse(echomode)
     endif
     if s:swank_actions_pending == 0 && s:last_update >= 0 && s:last_update < localtime() - 2
         " All SWANK output handled long ago, restore original update frequency
-        let &updatetime = s:save_updatetime
+        if &updatetime == g:slimv_updatetime
+            let &updatetime = s:save_updatetime
+        endif
     else
         " SWANK output still pending, keep higher update frequency
+        if &updatetime != g:slimv_updatetime
+            let s:save_updatetime = &updatetime
+        endif
         let &updatetime = g:slimv_updatetime
     endif
 endfunction
@@ -531,11 +541,12 @@ endfunction
 " Execute the given command and write its output at the end of the REPL buffer
 function! SlimvCommand( cmd )
     silent execute a:cmd
-    if g:slimv_updatetime < &updatetime
-        " Update more frequently until all swank responses processed
-        let &updatetime = g:slimv_updatetime
-        let s:last_update = -1
+    if &updatetime != g:slimv_updatetime
+        let s:save_updatetime = &updatetime
     endif
+    " Update more frequently until all swank responses processed
+    let &updatetime = g:slimv_updatetime
+    let s:last_update = -1
 endfunction
 
 " Execute the given SWANK command, wait for and return the response
@@ -658,7 +669,7 @@ function! SlimvReplLeave()
         " Check if REPL menu exists, then remove it
         aunmenu REPL
         execute ':unmap ' . g:slimv_leader . '\'
-    catch /.*/
+    catch
         " REPL menu not found, we cannot remove it
     endtry
     if g:slimv_repl_split
@@ -692,6 +703,13 @@ function! s:SplitView( filename )
             let winnr1 = winnr
         endif
     endfor
+    " create a unique buffer name that does not collide with any file or directory name
+    let bname = a:filename
+    let i = 0
+    while filereadable(bname) || isdirectory(bname)
+        let i = i+1
+        let bname = a:filename . i
+    endwhile
     if winnr1 > 0 && winnr2 > 0
         " We have already at least two windows used by slimv
         let winid = getwinvar( winnr(), 'id' )
@@ -703,21 +721,21 @@ function! s:SplitView( filename )
                 execute winnr2 . "wincmd w"
             endif
         endif
-        execute "silent view! " . a:filename
+        execute "silent view! " . bname
     else
         " Generate unique window id for the old window if not yet done
         call s:MakeWindowId()
         " No windows yet, need to split
         if g:slimv_repl_split == 1
-            execute "silent topleft sview! " . a:filename
+            execute "silent topleft " . g:slimv_repl_split_size . "sview! " . bname
         elseif g:slimv_repl_split == 2
-            execute "silent botright sview! " . a:filename
+            execute "silent botright " . g:slimv_repl_split_size . "sview! " . bname
         elseif g:slimv_repl_split == 3
-            execute "silent topleft vertical sview! " . a:filename
+            execute "silent topleft vertical " . g:slimv_repl_split_size . "sview! " . bname
         elseif g:slimv_repl_split == 4
-            execute "silent botright vertical sview! " . a:filename
+            execute "silent botright vertical " . g:slimv_repl_split_size . "sview! " . bname
         else
-            execute "silent view! " . a:filename
+            execute "silent view! " . bname
         endif
         " Generate unique window id for the new window as well
         call s:MakeWindowId()
@@ -1192,6 +1210,21 @@ function! SlimvSelectSymbolExt()
     return symbol
 endfunction
 
+" Find the matching pair
+function! SlimvFindMatchingPair()
+    let c = col( '.' ) - 1
+    let firstchar = getline( '.' )[c]
+    while c < len( getline( '.' ) ) && getline( '.' )[c] !~ '(\|)\|\[\|\]\|{\|}'
+        normal! l
+        let c = c + 1
+    endwhile
+    if getline( '.' )[c] =~ '(\|\[\|{'
+        call searchpair( '(', '', ')', 'W', s:skip_sc )
+    else
+        call searchpair( '(', '', ')', 'bW', s:skip_sc )
+    endif
+endfunction
+
 " Select bottom level form the cursor is inside and copy it to register 's'
 function! SlimvSelectForm( extended )
     if SlimvGetFiletype() == 'r'
@@ -1206,13 +1239,22 @@ function! SlimvSelectForm( extended )
         normal! l
         let c = c + 1
     endwhile
-    normal! va(
+    " select the whole form
+"    if firstchar != '('
+    if getline( '.' )[c] != '('
+        call searchpair( '(', '', ')', 'bW', s:skip_sc )
+    endif
+    silent! normal v
+    call searchpair( '(', '', ')', 'W', s:skip_sc )
+    if &selection == 'exclusive' 
+        silent! normal l
+    endif
     let p1 = getpos('.')
     normal! o
     let p2 = getpos('.')
     if firstchar != '(' && p1[1] == p2[1] && (p1[2] == p2[2] || p1[2] == p2[2]+1)
         " Empty selection and no paren found, select current word instead
-        normal! aw
+        normal! vvaw
     elseif a:extended || firstchar != '('
         " Handle '() or #'() etc. type special syntax forms (but stop at prompt)
         let c = col( '.' ) - 2
@@ -1609,7 +1651,11 @@ endfunction
 " TODO: implement custom indent procedure and omit lispindent()
 function SlimvLispindent( lnum )
     set lisp
-    let li = lispindent( a:lnum )
+    if SlimvGetFiletype() =~ '.*clojure.*' && exists( '*GetClojureIndent' ) && line('.') == a:lnum
+        let li = GetClojureIndent()
+    else
+        let li = lispindent( a:lnum )
+    endif
     set nolisp
     let backline = max([a:lnum-g:slimv_indent_maxlines, 1])
     let oldpos = getpos( '.' )
@@ -1749,6 +1795,11 @@ function! SlimvIndentUnsafe( lnum )
             if lb >= l && (lb > l || cb > c)
                 return cb
             endif
+            " Is this a multi-arity function definition?
+            let line = strpart( getline(l), c-1 )
+            if match( line, '(\s*\[' ) >= 0
+                return c + 1
+            endif
         endif
         " Is this a form with special indentation?
         let line = strpart( getline(l), c-1 )
@@ -1849,15 +1900,22 @@ function! SlimvIndentUnsafe( lnum )
                 return c + 1
             endif
         endif
+        " Fix indentation issues not handled by the default lisp.vim
         if SlimvGetFiletype() =~ '.*clojure.*'
-            " Fix clojure specific indentation issues not handled by the default lisp.vim
             if match( func, 'defn$' ) >= 0
+                return c + 1
+            endif
+        elseif SlimvGetFiletype() =~ '.*\(scheme\|racket\).*'
+            if match( func, 'syntax-rules$' ) >= 0
                 return c + 1
             endif
         else
             if match( func, 'defgeneric$' ) >= 0 || match( func, 'defsystem$' ) >= 0 || match( func, 'aif$' ) >= 0
                 return c + 1
             endif
+        endif
+        if match( func, 'if$' ) >= 0 || match( func, 'do$' ) >= 0
+            return c + funclen - 1
         endif
         " Remove package specification
         let func = substitute(func, '^.*:', '', '')
@@ -2065,8 +2123,12 @@ endfunction
 " Handle insert mode 'Backspace' keypress in the REPL buffer
 function! SlimvHandleBS()
     if line( "." ) == s:GetPromptLine() && col( "." ) <= b:repl_prompt_col
-        " No BS allowed before the previous EOF mark
-        return ""
+        if col( "." ) == b:repl_prompt_col
+            return "\<BS> "
+        else
+            " No BS allowed before the previous EOF mark
+            return ""
+        endif
     else
         return "\<BS>"
     endif
@@ -2759,7 +2821,12 @@ function! SlimvEvalBuffer()
         call SlimvError( "Cannot evaluate the REPL buffer." )
         return
     endif
-    let lines = getline( 1, '$' )
+    let first_line = 1
+    if getline( first_line )[0] == '#'
+        " skip shebang line
+        let first_line += 1
+    endif
+    let lines = getline( first_line, '$' )
     if SlimvGetFiletype() == 'scheme'
         " Swank-scheme requires us to pass a single s-expression
         " so embed buffer lines in a (begin ...) block
@@ -3385,7 +3452,7 @@ function! SlimvComplete( base )
     endif
     call sort( symbol )
     for m in symbol
-        if m =~ '^' . a:base
+        if m =~ '^' . escape( a:base, '~' )
             call add( res, m )
         endif
     endfor
@@ -3444,7 +3511,7 @@ function! SlimvFindDefinitionsForEmacs( symbol )
         else
             exec ":tjump " . a:symbol
         endif
-    catch /^Vim\%((\a\+)\)\=:E426/
+    catch
         call SlimvError( "\r" . v:exception )
     endtry
 endfunction
@@ -3466,6 +3533,7 @@ endfunction
 function! SlimvFindDefinitionsPrompt()
     if SlimvConnectSwank()
         let symbol = input( 'Find Definitions For: ', SlimvSelectSymbol() )
+        echon "\r"
         call SlimvFindDefinitionsForEmacs( symbol )
     endif
 endfunction
@@ -3551,6 +3619,7 @@ function! SlimvInitBuffer()
             inoremap <silent> <buffer> <CR>       <C-R>=pumvisible() ?  "\<lt>C-Y>" : SlimvHandleEnter()<CR><C-R>=SlimvArglistOnEnter()<CR>
         endif
     endif
+    nnoremap <silent> <buffer> %          :call SlimvFindMatchingPair()<CR>
     "noremap  <silent> <buffer> <C-C>      :call SlimvInterrupt()<CR>
     augroup SlimvInsertLeave
         au!

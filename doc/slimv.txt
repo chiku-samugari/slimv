@@ -1,7 +1,7 @@
-*slimv.txt*                    Slimv                 Last Change: 02 Oct 2016
+*slimv.txt*                    Slimv                 Last Change: 05 Oct 2019
 
 Slimv                                                                  *slimv*
-                               Version 0.9.13
+                               Version 0.9.14
 
 The Superior Lisp Interaction Mode for Vim.
 This plugin is aimed to help Lisp development by interfacing between Vim and
@@ -200,6 +200,9 @@ For the Swank options plese visit |swank-configuration|.
 
 |g:slimv_repl_split|         Open the Lisp REPL buffer in a split window
                              or in a separate buffer.
+
+|g:slimv_repl_split_size|    Size of the newly created split window in case
+                             |g:slimv_repl_split| is set.
 
 |g:slimv_repl_syntax|        Enable syntax coloring for the REPL buffer.
 
@@ -499,6 +502,12 @@ values may be used for |g:slimv_repl_split|:
     2: horizontal split below
     3: vertical split left
     4: vertical split right
+
+                                                      *g:slimv_repl_split_size*
+Size of the newly created split window in case |g:slimv_repl_split| is set.
+The default value is an empty string ('') meaning split size is automatically
+determined by vim. Define this either to 20 or '20' in order to set the split
+window size to 20 lines or columns (depending on the split direction).
 
                                                            *g:slimv_updatetime*
 The REPL buffer is refreshed at every keystroke or when the user doesn't press
@@ -1292,6 +1301,7 @@ b. install a Clojure Vim syntax plugin, like VimClojure.
 c. newest Vim versions contain a specific Clojure syntax script.
 
 
+                                                            *slimv-indentation*
 2. Indentation
 
 The indentation is also done via the default lisp.vim indent plugin, or an
@@ -1317,11 +1327,19 @@ such mappings are not defined by Slimv.
     gg=G                    Reindent whole file.
 
 
-3. Parenthesis handling
+                                                            *slimv-parentheses*
+                                                                *slimv-newline*
+3. Parenthesis and newline handling
 
-First of all there is paredit mode. If you don't like it, Vim still obtains
-many tools to aid working with parentheses. This is a very important topic
-for a Lisp programmer.
+First of all there is paredit mode that is provided by the paredit.vim script
+(also part of Slimv).
+For a detailed introduction on paredit mode please consult the |paredit| help.
+Paredit mode also changes the way newlines are handled, this feature is called
+"electric return", see more on this topic in |g:paredit_electric_return|.
+
+If you don't like paredit mode, Vim still obtains many tools to aid working
+with parentheses. This is a very important topic for a Lisp programmer.
+
 
     :inoremap ( ()<Esc>i    Automatically insert closing parenthesis mark when
                             an opening one is inserted.
@@ -1512,6 +1530,74 @@ CHANGE LOG                                                    *slimv-changelog*
 0.9.13 - Update REPL buffer in the background, no need to bring it into focus.
        - The evaluation result is also displayed in the status line.
        - REPL buffer number is remembered upon creation, no need to find it by name.
+       - In Vim 7.4 normal mode cursor movements and winrestview() cannot be
+         used in an 'indentexpr'.
+       - Concealing should not hide whitespaces in the Inspector buffer.
+       - Do not load contribs by default when starting the swank server.
+       - Place cursor at prompt position in the REPL buffer upon tab switch.
+       - Bugfix: Scheme builtin swank not launching.
+       - Fix for pressing Enter on a filename in SLDB when the filename is
+         not enclosed in double quotes.
+       - Save and restore marks ` and ' in the source buffer while updating REPL.
+       - Removed "b:" prefix from function names because latest vim version does not.
+       - Raising s-expressions now support [] and {}.
+       - Reindent current form after ,< and ,>.
+       - Paredit: always leave cursor to opening char's pos after wrapping selection.
+       - Paredit: fix possible cursor move problem caused by &indentexpr
+         when using the c operator.
+       - Added Clozure CL specific code to read environment variable SWANK_PORT.
+       - Changed nnoremap to noremap in normal mode movement mappings (, ), [[, ]].
+       - R language related fixes.
+       - Bugfix: 2 keymaps assumed g:paredit_leader is identical to ','.
+       - Fix for paredit 'x' and 'X' when clipboard=unnamed.
+       - Paredit: added support for hy.
+       - Paredit: use <Leader> instead of mapleader.
+       - Paredit: enhanced detection of forms balanced state.
+       - Paredit: unescaped square brackets in balance detection.
+       - Add support for alternate backspace keybinding.
+       - Bugfix: Null character should not be inserted from Python side.
+       - Delete contents into the black hole register when exiting the
+         Inspect/Threads/Sldb buffer.
+       - Added options g:slimv_unmap_cr, g:slimv_unmap_tab, g:slimv_unmap_space.
+       - Paredit bugfix: pressing <Tab> (for completion) followed by ')'.
+       - Fixed selection handling in EvalRegion and CompileRegion when
+         "set clipboard=unnamedplus".
+       - Paredit: Remove invalid uses of `call`.
+       - Do not destroy clipboard contents in EvalDefun when set clipboard=unnamed.
+       - Added missing quotes in the existence check for g:slimv_hs_root.
+       - Paredit: fixed problem with 'x' and 'X' commands when erasing
+         multi-byte unicode character.
+       - Insert mode Ctrl-W does not delete the prompt in the REPL buffer.
+       - Replace '\' characters with '/' in the compiled file name returned
+         by the swank server.
+       - Fix Paredit burfing (by moving parens left or right) when there are
+         stings as elements.
+       - Bugfix: arglist printing sometimes permanently disabled 'showmode'.
+       - Added command 'Quit REPL' mapped to <Leader>Q.
+       - Bugfix: wrong number of arguments when calling swank:eval-string-in-frame.
+       - Print REPL result string in a new line.
+       - Bugfix: MenuMap now correctly sets no keybindings when
+         g:slimv_keybindings is other than '1' or '2'.
+       - Bugfix: call winrestview() after SlimvCompileDefun.
+       - Indentation routine keeps original cursor position.
+       - Removed "com" extension from the scheme swank server when loading
+         compiled file.
+       - Store package in register when SlimvEvalTestDefun() is called
+         with an output register.
+       - Disable swank completion and arglist display while in :read_string mode.
+       - Added Find-Definitions function.
+       - Compatibility modifications for Python3.
+       - Updated logic for python version selection.
+       - Added paredit support for shen language.
+       - Use current package in Find-Definition.
+       - Fix unicode string length calculation for Python 3.x.
+       - Ignore Vim generated tags file.
+       - Paredit: Do not skip parens after \\ when searching for pairs.
+       - Use :tjump instead of :tag to jump to a definiton upon pressing Ctrl+].
+       - Modify Applescript for modern version iTerm.
+       - Fixed indentation of 'if' when the swank server does not provide it.
+       - Support both old and new style SWANK version strings (YYYY-MM-DD vs X.XX).
+       - Updated bundled swank server to slime version 2.19.
 
 0.9.12 - Added support for the R language via swank-R (by Philipp Marek).
        - Test form for SlimvEvalTestExp() may wrap the selected s-expression.
@@ -2158,7 +2244,9 @@ Jon Thacker, Andrew Hills, Jerome Baum, John Obbele, Andreas Fredriksson,
 Andrew Lyon, Andrew Smirnoff, Brett Kosinski, David Greenberg, Sung Pae,
 Conrad Schuler, Tim Pope, David Soria Parra, Colin Jones, Logan Campbell,
 John Szakmeister, Glen Gibb, Federico Churca-Torrusio, Robert Kerr, Jimmy Lu,
-Seth Price for additional notes and contributions.
+Seth Price, Philip Xu, Junegunn Choi, and github users elmart, chiku-samugari,
+dusenberrymw, bclube, vi1, FreeBlues, bnoordhuis, bvnierop, mattn, D4ryus,
+jakykong, Prajjwal, Neetless, jurov for additional notes and contributions.
 
 I would also like to say a big thank you to everyone donating to support
 development. This is a one-element list at the moment: :)

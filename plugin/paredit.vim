@@ -1,7 +1,7 @@
 " paredit.vim:
 "               Paredit mode for Slimv
-" Version:      0.9.13
-" Last Change:  15 Jan 2017
+" Version:      0.9.14
+" Last Change:  05 Oct 2019
 " Maintainer:   Tamas Kovacs <kovisoft at gmail dot com>
 " License:      This file is placed in the public domain.
 "               No warranty, express or implied.
@@ -17,8 +17,13 @@ endif
 let g:paredit_loaded = 1
 
 " Needed to load filetype and indent plugins
-filetype plugin on
-filetype indent on
+if !exists( 'g:paredit_disable_ftplugin') || g:paredit_disable_ftplugin == 0
+    filetype plugin on
+endif
+
+if !exists( 'g:paredit_disable_ftindent') || g:paredit_disable_ftindent == 0
+    filetype indent on
+endif
 
 " =====================================================================
 "  Global variable definitions
@@ -72,7 +77,7 @@ let s:repeat             = 0
 let s:yank_pos           = []
 
 " Filetypes with [] and {} pairs balanced as well
-let s:fts_balancing_all_brackets = '.*\(clojure\|hy\|scheme\|racket\|shen\).*'
+let s:fts_balancing_all_brackets = '.*\(clojure\|hy\|scheme\|racket\|shen\|lfe\|fennel\).*'
 
 " =====================================================================
 "  General utility functions
@@ -135,6 +140,8 @@ function! PareditInitBuffer()
         nnoremap <buffer> <silent> <Plug>(PareditChangeSpeccb)           :<C-U>call PareditChangeSpec('cb',0)<CR>
         nnoremap <buffer> <silent> <Plug>(PareditChangeSpecciw)          :<C-U>call PareditChangeSpec('ciw',1)<CR>
         nnoremap <buffer> <silent> <Plug>(PareditChangeSpeccaw)          :<C-U>call PareditChangeSpec('caw',1)<CR>
+        nnoremap <buffer> <silent> do           do
+        nnoremap <buffer> <silent> dp           dp
         call RepeatableNNoRemap('<Plug>(PareditPutRepeatablep)', ':<C-U>call PareditPut("p")')
         call RepeatableNNoRemap('<Plug>(PareditPutRepeatableP)', ':<C-U>call PareditPut("P")')
         call RepeatableNNoRemap('<Plug>(PareditWrapRepeatable)', ':<C-U>call PareditWrap("(",")")')
@@ -159,6 +166,10 @@ function! PareditInitBuffer()
         call RepeatableNNoRemap('<Plug>(PareditSplit)', ':<C-U>call PareditSplit()')
         call RepeatableNNoRemap('<Plug>(PareditJoin)', ':<C-U>call PareditJoin()')
         call RepeatableNNoRemap('<Plug>(PareditSplice)', ':<C-U>call PareditSplice()')
+
+        if !exists( 'g:slimv_loaded' )
+            execute 'nnoremap <buffer> <silent> ' . g:paredit_leader.'(  :<C-U>call PareditToggle()<CR>'
+        endif
 
         if g:paredit_electric_return && mapcheck( "<CR>", "i" ) == ""
             " Do not override any possible mapping for <Enter>
@@ -238,6 +249,12 @@ function! PareditOpfunc( func, type, visualmode )
     set virtualedit=all
     let regname = v:register
     let save_0 = getreg( '0' )
+    if s:repeat > 0
+        let oldreg = getreg( v:register )
+        let s:repeat = s:repeat - 1
+    else
+        let oldreg = ''
+    endif
 
     if a:visualmode  " Invoked from Visual mode, use '< and '> marks.
         silent exe "normal! `<" . a:type . "`>"
@@ -255,10 +272,10 @@ function! PareditOpfunc( func, type, visualmode )
     if !g:paredit_mode || (a:visualmode && (a:type == 'block' || a:type == "\<C-V>"))
         " Block mode is too difficult to handle at the moment
         silent exe "normal! d"
-        let putreg = getreg( '"' )
+        let putreg = oldreg . getreg( '"' )
     else
         silent exe "normal! y"
-        let putreg = getreg( '"' )
+        let putreg = oldreg . getreg( '"' )
         if a:func == 'd'
             " Register "0 is corrupted by the above 'y' command
             call setreg( '0', save_0 ) 
@@ -315,16 +332,16 @@ endfunction
 " Set delete mode also saving repeat count
 function! PareditSetDelete( count )
     let s:repeat = a:count
+    call setreg( v:register, '' ) 
     set opfunc=PareditDelete
 endfunction
 
 " General delete operator handling
 function! PareditDelete( type, ... )
     call PareditOpfunc( 'd', a:type, a:0 )
-    if s:repeat > 1
-        call feedkeys( (s:repeat-1) . "." )
+    if s:repeat > 0
+        call feedkeys( "." )
     endif
-    let s:repeat = 0
 endfunction
 
 " General change operator handling
@@ -954,9 +971,13 @@ endfunction
 function! PareditBackspace( repl_mode )
     let [lp, cp] = s:GetReplPromptPos()
     if a:repl_mode && line( "." ) == lp && col( "." ) <= cp
-        " No BS allowed before the previous EOF mark in the REPL
-        " i.e. don't delete Lisp prompt
-        return ""
+        if col( "." ) == cp
+            return "\<BS> "
+        else
+            " No BS allowed before the previous EOF mark in the REPL
+            " i.e. don't delete Lisp prompt
+            return ""
+        endif
     endif
 
     if !g:paredit_mode || s:InsideComment()
@@ -1028,7 +1049,7 @@ endfunction
 
 " Initialize yank position list
 function! s:InitYankPos()
-    call setreg( &clipboard == 'unnamed' ? '*' : '"', '' ) 
+    call setreg( v:register, '' )
     let s:yank_pos = []
 endfunction
 
@@ -1067,8 +1088,14 @@ function! s:EraseFwd( count, startcol )
             let line = strpart( line, 0, pos )
         elseif s:InsideComment() || ( s:InsideString() && line[pos] != '"' )
             " Erasing any character inside string or comment
-            let reg = reg . line[pos]
-            let line = strpart( line, 0, pos ) . strpart( line, pos+1 )
+            let chars = split(strpart(line, pos), '\zs')
+            if len(chars) > 0
+                " Identify the character to be erased and it's length
+                " The length may be >1 if this is a multi-byte character
+                let ch = chars[0]
+                let reg = reg . ch
+                let line = strpart( line, 0, pos ) . strpart( line, pos+len(ch) )
+            endif
         elseif pos > 0 && line[pos-1:pos] =~ b:any_matched_pair
             if pos > a:startcol
                 " Erasing an empty character-pair
@@ -1103,7 +1130,7 @@ function! s:EraseFwd( count, startcol )
     endwhile
     let &virtualedit = ve_save
     call setline( '.', line )
-    call setreg( &clipboard == 'unnamed' ? '*' : '"', reg ) 
+    call setreg( v:register, reg )
 endfunction
 
 " Backward erasing a character in normal mode, do not check if current form balanced
@@ -1120,8 +1147,15 @@ function! s:EraseBck( count )
             normal! h
             let pos = pos - 1
         elseif s:InsideComment() || ( s:InsideString() && line[pos-1] != '"' )
-            let reg = reg . line[pos-1]
-            let line = strpart( line, 0, pos-1 ) . strpart( line, pos )
+            let chars = split(strpart(line, 0, pos), '\zs')
+            if len(chars) > 0
+                " Identify the character to be erased and it's length
+                " The length may be >1 if this is a multi-byte character
+                let ch = chars[-1]
+                let reg = reg . ch
+                let line = strpart( line, 0, pos-len(ch) ) . strpart( line, pos )
+                let pos = pos - len(ch) + 1
+            endif
         elseif line[pos-1:pos] =~ b:any_matched_pair
             " Erasing an empty character-pair
             let p2 = s:RemoveYankPos()
@@ -1148,7 +1182,7 @@ function! s:EraseBck( count )
         let c = c - 1
     endwhile
     call setline( '.', line )
-    call setreg( &clipboard == 'unnamed' ? '*' : '"', reg ) 
+    call setreg( v:register, reg )
 endfunction
 
 " Forward erasing a character in normal mode
@@ -1830,4 +1864,12 @@ endif
 
 if !exists("g:paredit_disable_shen")
     au FileType shen      call PareditInitBuffer()
+endif
+
+if !exists("g:paredit_disable_lfe")
+    au FileType lfe       call PareditInitBuffer()
+endif
+
+if !exists("g:paredit_disable_fennel")
+    au FileType fennel    call PareditInitBuffer()
 endif
