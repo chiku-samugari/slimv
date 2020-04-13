@@ -1,7 +1,7 @@
 " paredit.vim:
 "               Paredit mode for Slimv
 " Version:      0.9.14
-" Last Change:  05 Oct 2019
+" Last Change:  23 Oct 2019
 " Maintainer:   Tamas Kovacs <kovisoft at gmail dot com>
 " License:      This file is placed in the public domain.
 "               No warranty, express or implied.
@@ -72,6 +72,7 @@ endif
 let s:any_macro_prefix   = "'" . '\|`\|#\|@\|\~\|,\|\^'
 
 " Repeat count for some remapped edit functions (like 'd')
+let s:count              = 0
 let s:repeat             = 0
 
 let s:yank_pos           = []
@@ -116,10 +117,10 @@ function! PareditInitBuffer()
         noremap  <buffer> <silent> <Plug>(PareditSmartJumpClosing0)            :<C-U>call PareditSmartJumpClosing(0)<CR>
         vnoremap <buffer> <silent> <Plug>(PareditSmartJumpOpening1)            <Esc>:<C-U>call PareditSmartJumpOpening(1)<CR>
         vnoremap <buffer> <silent> <Plug>(PareditSmartJumpClosing1)            <Esc>:<C-U>call PareditSmartJumpClosing(1)<CR>
-        noremap  <buffer> <silent> <Plug>(PareditFindOpening0)            :<C-U>call PareditFindOpening('(',')',0)<CR>
-        noremap  <buffer> <silent> <Plug>(PareditFindClosing0)            :<C-U>call PareditFindClosing('(',')',0)<CR>
-        vnoremap <buffer> <silent> <Plug>(PareditFindOpening1)            <Esc>:<C-U>call PareditFindOpening('(',')',1)<CR>
-        vnoremap <buffer> <silent> <Plug>(PareditFindClosing1)            <Esc>:<C-U>call PareditFindClosing('(',')',1)<CR>
+        noremap  <buffer> <silent> <Plug>(PareditJumpOpening0)            :<C-U>call PareditJumpOpening('(',')',0)<CR>
+        noremap  <buffer> <silent> <Plug>(PareditJumpClosing0)            :<C-U>call PareditJumpClosing('(',')',0)<CR>
+        vnoremap <buffer> <silent> <Plug>(PareditJumpOpening1)            <Esc>:<C-U>call PareditJumpOpening('(',')',1)<CR>
+        vnoremap <buffer> <silent> <Plug>(PareditJumpClosing1)            <Esc>:<C-U>call PareditJumpClosing('(',')',1)<CR>
         noremap  <buffer> <silent> <Plug>(PareditFindDefunBck)           :<C-U>call PareditFindDefunBck()<CR>
         noremap  <buffer> <silent> <Plug>(PareditFindDefunFwd)           :<C-U>call PareditFindDefunFwd()<CR>
 
@@ -249,11 +250,9 @@ function! PareditOpfunc( func, type, visualmode )
     set virtualedit=all
     let regname = v:register
     let save_0 = getreg( '0' )
+    let oldreg = (s:repeat > 0 && s:repeat < s:count) ? getreg( regname ) : ''
     if s:repeat > 0
-        let oldreg = getreg( v:register )
         let s:repeat = s:repeat - 1
-    else
-        let oldreg = ''
     endif
 
     if a:visualmode  " Invoked from Visual mode, use '< and '> marks.
@@ -272,10 +271,10 @@ function! PareditOpfunc( func, type, visualmode )
     if !g:paredit_mode || (a:visualmode && (a:type == 'block' || a:type == "\<C-V>"))
         " Block mode is too difficult to handle at the moment
         silent exe "normal! d"
-        let putreg = oldreg . getreg( '"' )
+        let putreg = oldreg . getreg( regname )
     else
-        silent exe "normal! y"
-        let putreg = oldreg . getreg( '"' )
+        silent exe 'normal! "' . regname . 'y'
+        let putreg = oldreg . getreg( regname )
         if a:func == 'd'
             " Register "0 is corrupted by the above 'y' command
             call setreg( '0', save_0 ) 
@@ -324,15 +323,14 @@ function! PareditOpfunc( func, type, visualmode )
     if a:func == 'd' && regname == '"'
         " Do not currupt the '"' register and hence the "0 register
         call setreg( '1', putreg ) 
-    else
-        call setreg( regname, putreg ) 
     endif
+    call setreg( regname, putreg ) 
 endfunction
 
 " Set delete mode also saving repeat count
 function! PareditSetDelete( count )
-    let s:repeat = a:count
-    call setreg( v:register, '' ) 
+    let s:count  = a:count
+    let s:repeat = s:count
     set opfunc=PareditDelete
 endfunction
 
@@ -434,7 +432,7 @@ function! PareditPut( cmd )
 
     if matched !~ '\S\+'
         " Register contents is balanced, perform default put function
-        silent exe "normal! " . (v:count>1 ? v:count : '') . (regname=='"' ? '' : '"'.regname) . a:cmd
+        silent exe "normal! " . (v:count>1 ? v:count : '') . '"' . regname . a:cmd
         return
     endif
 
@@ -449,7 +447,7 @@ function! PareditPut( cmd )
 
     " Store balanced text in put register and call the appropriate put command
     call setreg( regname, putreg ) 
-    silent exe "normal! " . (v:count>1 ? v:count : '') . (regname=='"' ? '' : '"'.regname) . a:cmd
+    silent exe "normal! " . (v:count>1 ? v:count : '') . '"' . regname . a:cmd
     call setreg( regname, reg_save ) 
 endfunction
 
@@ -702,6 +700,12 @@ function! PareditFindOpening( open, close, select )
     endif
 endfunction
 
+" Jump to opening matched character
+function! PareditJumpOpening( open, close, select )
+    normal! m`
+    call PareditFindOpening( a:open, a:close, a:select )
+endfunction
+
 " Find closing matched character
 function! PareditFindClosing( open, close, select )
     let open  = escape( a:open , '[]' )
@@ -723,9 +727,16 @@ function! PareditFindClosing( open, close, select )
     endif
 endfunction
 
+" Jump to closing matched character
+function! PareditJumpClosing( open, close, select )
+    normal! m`
+    call PareditFindClosing( a:open, a:close, a:select )
+endfunction
+
 " Returns the nearest opening character to the cursor
 " Used for smart jumping in Clojure
 function! PareditSmartJumpOpening( select )
+    normal! m`
     let [paren_line, paren_col] = searchpairpos('(', '', ')', 'bWn', 's:SkipExpr()')
     let [bracket_line, bracket_col] = searchpairpos('\[', '', '\]', 'bWn', 's:SkipExpr()')
     let [brace_line, brace_col] = searchpairpos('{', '', '}', 'bWn', 's:SkipExpr()')
@@ -744,6 +755,7 @@ endfunction
 " Returns the nearest opening character to the cursor
 " Used for smart jumping in Clojure
 function! PareditSmartJumpClosing( select )
+    normal! m`
     let [paren_line, paren_col] = searchpairpos('(', '', ')', 'Wn', 's:SkipExpr()')
     let [bracket_line, bracket_col] = searchpairpos('\[', '', '\]', 'Wn', 's:SkipExpr()')
     let [brace_line, brace_col] = searchpairpos('{', '', '}', 'Wn', 's:SkipExpr()')
@@ -761,6 +773,7 @@ endfunction
 
 " Find defun start backwards
 function! PareditFindDefunBck()
+    normal! m`
     let l = line( '.' )
     let matchb = max( [l-g:paredit_matchlines, 1] )
     let oldpos = getpos( '.' ) 
@@ -787,6 +800,7 @@ endfunction
 
 " Find defun start forward
 function! PareditFindDefunFwd()
+    normal! m`
     let l = line( '.' )
     let matchf = min( [l+g:paredit_matchlines, line('$')] )
     let oldpos = getpos( '.' ) 
