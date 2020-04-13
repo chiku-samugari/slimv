@@ -1914,9 +1914,6 @@ function! SlimvIndentUnsafe( lnum )
                 return c + 1
             endif
         endif
-        if match( func, 'if$' ) >= 0 || match( func, 'do$' ) >= 0
-            return c + funclen - 1
-        endif
         " Remove package specification
         let func = substitute(func, '^.*:', '', '')
         if func != '' && s:swank_connected
